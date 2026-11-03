@@ -1,0 +1,54 @@
+{
+  "rules": {
+    "usernames": {
+      "$name": {
+        ".read": true,
+        ".write": "auth != null && !data.exists() && newData.val() === auth.uid",
+        ".validate": "$name.matches(/^[a-z0-9_]{3,20}$/)"
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "status": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('friends').child($uid).child(auth.uid).exists())",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "friendRequests": {
+      "$to": {
+        ".read": "auth != null && auth.uid === $to",
+        "$from": {
+          ".write": "auth != null && (auth.uid === $from || (auth.uid === $to && !newData.exists()))"
+        }
+      }
+    },
+    "sentRequests": {
+      "$from": {
+        ".read": "auth != null && auth.uid === $from",
+        "$to": {
+          ".write": "auth != null && (auth.uid === $from || (auth.uid === $to && !newData.exists()))"
+        }
+      }
+    },
+    "friends": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$friend": {
+          ".write": "auth != null && (!newData.exists() ? (auth.uid === $uid || auth.uid === $friend) : ((auth.uid === $uid && root.child('friendRequests').child($uid).child($friend).exists()) || (auth.uid === $friend && root.child('friendRequests').child($friend).child($uid).exists())))"
+        }
+      }
+    },
+    "pairs": {
+      "$pair": {
+        ".read": "auth != null && ($pair.beginsWith(auth.uid + '_') || $pair.endsWith('_' + auth.uid)) && root.child('friends').child(auth.uid).child($pair.replace(auth.uid, '').replace('_', '')).exists()",
+        ".write": "auth != null && ($pair.beginsWith(auth.uid + '_') || $pair.endsWith('_' + auth.uid)) && root.child('friends').child(auth.uid).child($pair.replace(auth.uid, '').replace('_', '')).exists()",
+        "$section": { ".indexOn": ["at"] }
+      }
+    }
+  }
+}

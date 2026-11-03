@@ -1,0 +1,9 @@
+{
+  "name": "watchparty-firebase-bundle",
+  "private": true,
+  "scripts": {
+    "build": "esbuild fb-entry.js --bundle --format=esm --minify --target=chrome120 --outfile=../vendor/firebase.js"
+  },
+  "dependencies": { "firebase": "12.3.0" },
+  "devDependencies": { "esbuild": "0.25.10" }
+}

@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "WatchParty",
+  "version": "2.7.0",
+  "description": "Watch Netflix, Disney+ and Prime Video together with friends: calls, synced playback, chat and reactions.",
+  "permissions": ["sidePanel", "storage", "offscreen", "notifications"],
+  "host_permissions": [
+    "https://*.netflix.com/*",
+    "https://*.disneyplus.com/*",
+    "https://*.primevideo.com/*",
+    "https://www.amazon.com/*",
+    "https://www.amazon.com.br/*",
+    "https://www.amazon.co.uk/*",
+    "https://*.firebaseio.com/*",
+    "https://*.firebasedatabase.app/*",
+    "https://rtc.live.cloudflare.com/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "Open WatchParty",
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+  },
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "side_panel": { "default_path": "panel/panel.html" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.netflix.com/*",
+        "https://*.disneyplus.com/*",
+        "https://*.primevideo.com/*",
+        "https://www.amazon.com/gp/video/*",
+        "https://www.amazon.com.br/gp/video/*",
+        "https://www.amazon.co.uk/gp/video/*"
+      ],
+      "js": ["shared/media.js", "content/content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.netflix.com/*"],
+      "js": ["content/netflix-main.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["panel/companion.html", "panel/companion.js", "panel/companion.css", "shared/*"],
+      "matches": [
+        "https://*.netflix.com/*",
+        "https://*.disneyplus.com/*",
+        "https://*.primevideo.com/*",
+        "https://www.amazon.com/*",
+        "https://www.amazon.com.br/*",
+        "https://www.amazon.co.uk/*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WatchParty</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&display=swap">
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <div id="loading" class="screen center"><p class="muted">Connecting…</p></div>
+
+  <div id="setup" class="screen center hidden">
+    <h1 class="brand">WatchParty</h1>
+    <p>Add your Firebase project details to <code>config.js</code>, then reload the extension.</p>
+    <p class="muted">The README has the step-by-step setup.</p>
+  </div>
+
+  <!-- Sign in / create account -->
+  <div id="auth" class="screen hidden">
+    <h1 class="brand">WatchParty</h1>
+    <p class="lead">Watch together, wherever you are.</p>
+    <label class="field">Username
+      <input id="auth-user" maxlength="20" autocomplete="username" spellcheck="false">
+    </label>
+    <p class="hint">This is your name in WatchParty, and how friends add you. Letters, numbers and _ only. A new username is created the first time you use it.</p>
+    <button id="auth-go" class="primary">Continue</button>
+    <p id="auth-error" class="error" role="alert"></p>
+  </div>
+
+  <!-- Main app -->
+  <div id="main" class="screen hidden">
+    <header class="topbar">
+      <span id="me-avatar" class="avatar me"></span>
+      <div class="who"><strong id="me-name"></strong><span id="me-status" class="muted">Online</span></div>
+      <button id="settings-btn" class="icon" title="Settings">⚙</button>
+    </header>
+
+    <section id="incoming" class="incoming hidden" aria-live="assertive">
+      <span id="incoming-avatar" class="avatar them"></span>
+      <p id="incoming-text"></p>
+      <div class="row">
+        <button id="incoming-yes" class="primary">Answer</button>
+        <button id="incoming-no" class="decline">Decline</button>
+      </div>
+    </section>
+
+    <p id="notice" class="notice hidden" role="status"></p>
+
+    <!-- Home: friends -->
+    <section id="home">
+      <ul id="requests-in" class="list"></ul>
+      <ul id="friends" class="list friends"></ul>
+      <div class="add">
+        <label class="field">Add a friend by username
+          <div class="row">
+            <input id="add-user" placeholder="username" spellcheck="false" autocomplete="off">
+            <button id="add-btn">Send request</button>
+          </div>
+        </label>
+        <p id="add-msg" class="hint"></p>
+      </div>
+      <ul id="requests-out" class="list"></ul>
+    </section>
+
+    <!-- One friend: call, watching, chat, watchlist, history -->
+    <section id="friend" class="hidden">
+      <div class="friend-head">
+        <button id="back-btn" class="icon" title="Back to friends">←</button>
+        <span id="friend-avatar" class="avatar them"></span>
+        <div class="who"><strong id="friend-name"></strong><span id="friend-status" class="muted"></span></div>
+        <button id="call-btn" class="primary call">Call</button>
+      </div>
+
+      <section id="call-card" class="call-card hidden">
+        <div id="ringing" class="ringing hidden">
+          <p id="ringing-text"></p>
+          <button id="cancel-call" class="decline">Cancel</button>
+        </div>
+        <div id="live" class="hidden">
+          <div class="stage">
+            <video id="remote-video" autoplay playsinline muted></video>
+            <div id="remote-placeholder" class="placeholder"><span id="remote-initial"></span></div>
+            <video id="local-video" autoplay playsinline muted></video>
+            <span id="remote-label" class="tile-label"></span>
+          </div>
+          <div class="call-controls">
+            <button id="mic-btn" class="round" title="Mute microphone">🎙️</button>
+            <button id="cam-btn" class="round" title="Turn camera off">📷</button>
+            <span id="call-status" class="muted small-text"></span>
+            <button id="hangup-btn" class="round end" title="Hang up">✆</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="perm" class="perm hidden">
+        <p>WatchParty needs your OK once to use your camera and microphone.</p>
+        <button id="perm-btn" class="primary">Allow camera and microphone</button>
+      </section>
+
+      <section id="watch-card" class="ticket hidden" aria-live="polite">
+        <p id="now-playing" class="now"></p>
+        <p id="sync-status" class="sync idle"></p>
+        <div id="same-ask" class="same-ask hidden">
+          <p><strong>Are you watching the same thing?</strong> <span id="same-text"></span></p>
+          <button id="same-btn" class="small primary">Yes, sync us</button>
+        </div>
+        <div id="follow-prompt" class="follow hidden">
+          <span id="follow-text"></span>
+          <button id="follow-btn" class="small">Open it</button>
+        </div>
+        <div class="actions">
+          <div id="reactions" class="reactions" aria-label="Send a reaction"></div>
+          <div class="row">
+            <button id="countdown-btn" title="Pause both, count down 3-2-1, then play together">3·2·1 play</button>
+            <button id="resync-btn" title="Bring your friend to exactly where you are">Sync to me</button>
+            <button id="fullscreen-btn" title="Fill the screen with the video. The call window stays on top.">⛶ Fullscreen</button>
+          </div>
+        </div>
+      </section>
+
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="chat" class="active">Chat</button>
+        <button role="tab" data-tab="watchlist">Watchlist</button>
+        <button role="tab" data-tab="history">History</button>
+      </nav>
+
+      <section id="tab-chat" class="tab active">
+        <div id="messages" class="messages"></div>
+        <p id="typing" class="typing muted"></p>
+        <div id="emoji-picker" class="emoji-picker hidden"></div>
+        <div class="composer">
+          <button id="emoji-btn" class="icon" title="Emoji">😊</button>
+          <input id="chat-input" placeholder="Message" maxlength="1000" autocomplete="off">
+          <button id="send-btn" class="primary">Send</button>
+        </div>
+      </section>
+
+      <section id="tab-watchlist" class="tab">
+        <button id="wl-add-current" class="wide">Add what I'm watching</button>
+        <details class="manual">
+          <summary>Add by link</summary>
+          <input id="wl-title" placeholder="Title" maxlength="140">
+          <input id="wl-url" placeholder="https://www.netflix.com/watch/…">
+          <button id="wl-add">Add to watchlist</button>
+        </details>
+        <ul id="watchlist" class="list"></ul>
+      </section>
+
+      <section id="tab-history" class="tab">
+        <ul id="history" class="list"></ul>
+        <button id="history-clear" class="danger-link hidden">Clear history</button>
+      </section>
+
+      <button id="unfriend-btn" class="danger-link">Remove from friends</button>
+    </section>
+  </div>
+
+  <!-- Settings -->
+  <div id="settings" class="screen hidden">
+    <header class="topbar">
+      <button id="settings-back" class="icon" title="Back">←</button>
+      <div class="who"><strong>Settings</strong></div>
+    </header>
+    <label class="check"><input type="checkbox" data-setting="duck"> Lower the show's volume while my friend talks</label>
+    <label class="check"><input type="checkbox" data-setting="toasts"> Show chat messages on the video</label>
+    <label class="check"><input type="checkbox" data-setting="closePanelInFullscreen"> Close this panel when the video goes fullscreen</label>
+    <label class="check"><input type="checkbox" data-setting="ringtone"> Play a ringtone for incoming calls</label>
+    <label class="check"><input type="checkbox" data-setting="notifyMessages"> Notify me about new messages</label>
+    <button id="perm-btn-2" class="wide">Allow camera and microphone</button>
+    <p id="account-line" class="muted small-text"></p>
+    <button id="signout-btn" class="danger-link">Sign out</button>
+  </div>
+
+  <script src="../shared/media.js"></script>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>

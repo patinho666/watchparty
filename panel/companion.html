@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WatchParty</title>
+  <link rel="stylesheet" href="companion.css">
+</head>
+<body>
+  <div id="card" class="card hidden">
+    <header id="bar" class="bar" title="Drag to move">
+      <span class="live"></span>
+      <span id="who" class="who"></span>
+      <button id="open-app" class="round small" title="Open the WatchParty sidebar">⇱</button>
+      <button id="minimize" class="round small" title="Make smaller">–</button>
+    </header>
+    <div id="body">
+      <div id="stage" class="stage">
+        <video id="remote" autoplay playsinline muted></video>
+        <div id="placeholder" class="placeholder"><span id="initial"></span></div>
+        <video id="local" autoplay playsinline muted></video>
+        <span id="label" class="label"></span>
+        <button id="preview" class="preview hidden"></button>
+        <div id="ask" class="ask hidden">
+          <span>Same video? <span id="ask-text"></span></span>
+          <button id="ask-btn">Yes, sync us</button>
+        </div>
+      </div>
+      <div id="controls" class="controls">
+        <button id="mic" class="round" title="Mute microphone">🎙️</button>
+        <button id="cam" class="round" title="Turn camera off">📷</button>
+        <button id="chat-toggle" class="round" title="Chat">💬<span id="unread" class="dot hidden"></span></button>
+        <button id="countdown" class="pill-btn" title="Pause both, count down, then play together">3·2·1</button>
+        <button id="resync" class="round" title="Bring your friend to where you are">⟲</button>
+        <button id="hangup" class="round end" title="Hang up">✆</button>
+      </div>
+      <div id="reactions" class="reactions"></div>
+      <div id="chat" class="chat hidden">
+        <div id="messages" class="messages"></div>
+        <div class="composer">
+          <input id="chat-input" placeholder="Message" maxlength="1000" autocomplete="off">
+          <button id="send" class="send">Send</button>
+        </div>
+      </div>
+    </div>
+    <div id="mini" class="mini hidden">
+      <button id="mini-mic" class="round small" title="Mute microphone">🎙️</button>
+      <span id="mini-text" class="who"></span>
+      <button id="expand" class="round small" title="Show video and chat">⤢<span id="mini-unread" class="dot hidden"></span></button>
+      <button id="mini-hangup" class="round small end" title="Hang up">✆</button>
+    </div>
+  </div>
+
+  <script src="../shared/media.js"></script>
+  <script type="module" src="companion.js"></script>
+</body>
+</html>
