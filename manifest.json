@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WatchParty",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Watch Netflix, Disney+ and Prime Video together with friends: calls, synced playback, chat and reactions.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlu+7JbXab/N6AK00rsEDYpEqS98+c872UY37/jlpjDLuUz0z5m9Vu1ziY0RUicJB2fWFOgKI8G8FtlW+/GOuDXxrsO6KnBIJck2k/9KMRUSH3l0lnMbl8lBhFhfnCXFIbRzf0TRuwREvBBl+n26ehhvz1eXNk1SD4HJprqc7lrn8bcgESclSgD0V3W/lV/5RodPW8GpxA44aHqvi+7XBwNgmiL16Ej6LCV7bzt0Qbr+r915JwYLslH09CCZUiFdEwyLnaZ7BJaVLpkWxrzTgY54uptkYn8uz0pgYwT8IBPNcEzsw6eNGtuoOh//HC72hW+zV9QjfyRkSjasot3PJkQIDAQAB",
   "permissions": [
