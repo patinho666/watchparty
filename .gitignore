@@ -1,0 +1,5 @@
+# Your own Firebase settings: never publish them with the extension.
+config.js
+# Created by install.bat on each PC.
+com.watchparty.updater.json
+build/node_modules/

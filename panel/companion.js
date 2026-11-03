@@ -3,6 +3,7 @@ import { connectEngine } from '../shared/client.js';
 import { createVideoView } from '../shared/video-view.js';
 
 const $ = (id) => document.getElementById(id);
+const M = globalThis.WPMedia;
 const REACTIONS = ['❤️', '😂', '😮', '😢', '😱', '👏', '🔥', '🍿'];
 let state = null;
 let chatOpen = false;
@@ -86,7 +87,11 @@ function render() {
   if (!c.partnerMic) notes.push('muted');
   if (c.conn === 'reconnecting' || c.partnerAway) notes.push('reconnecting…');
   else if (c.conn !== 'connected') notes.push('connecting…');
+  const sy = (state.watch && state.watch.sync) || {};
+  if (!notes.length && sy.partnerTime != null) notes.push(M.fmtTime(sy.partnerTime));
   $('label').textContent = notes.length ? `${name}: ${notes.join(', ')}` : '';
+  $('wait').classList.toggle('hidden', !sy.waiting || !!sy.askSame);
+  if (sy.waiting) $('wait-text').textContent = sy.text;
 
   for (const id of ['mic', 'mini-mic']) {
     $(id).textContent = c.micOn ? '🎙️' : '🔇';
@@ -127,6 +132,7 @@ for (const id of ['hangup', 'mini-hangup']) $(id).onclick = () => act('hangup');
 $('countdown').onclick = () => act('countdown');
 $('resync').onclick = () => act('resync');
 $('ask-btn').onclick = () => act('confirm-same');
+$('remind').onclick = () => { act('remind'); $('remind').textContent = 'Sent'; setTimeout(() => { $('remind').textContent = '⏰ Remind'; }, 2500); };
 $('chat-toggle').onclick = () => setChat(!chatOpen);
 $('preview').onclick = () => setChat(true);
 // "–" switches between the small bar and the full window; it never closes anything.
@@ -141,6 +147,26 @@ $('bar').addEventListener('pointerdown', (e) => {
   if (e.target.closest('button') || e.button !== 0) return;
   e.preventDefault();
   parent.postMessage({ __wpCompanion: 'drag', sx: e.screenX, sy: e.screenY }, '*');
+});
+
+// Tell the page while the chat box is in use, so it can hand focus back if
+// the streaming player grabs it.
+let typingTimer = null;
+$('chat-input').addEventListener('focus', () => parent.postMessage({ __wpCompanion: 'typing', on: true }, '*'));
+$('chat-input').addEventListener('blur', () => {
+  clearTimeout(typingTimer);
+  // A blur caused by the player is undone by the page; a real one ends typing.
+  typingTimer = setTimeout(() => {
+    if (document.activeElement !== $('chat-input')) parent.postMessage({ __wpCompanion: 'typing', on: false }, '*');
+  }, 1500);
+});
+window.addEventListener('message', (e) => {
+  if (e.source !== parent || !e.data || e.data.__wpParent !== 'refocus') return;
+  const input = $('chat-input');
+  if (!chatOpen) return;
+  const pos = input.selectionStart;
+  input.focus();
+  try { input.setSelectionRange(pos, pos); } catch {}
 });
 
 const sendChat = () => {

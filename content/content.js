@@ -82,9 +82,17 @@
   }
 
   // ── Finding the right <video> ─────────────────────────────────
+  // Disney+ hides its video inside shadow DOM, which needs a full (slow) scan.
+  // Once found, keep using it, and rescan only every few seconds.
+  let lastDeepScan = 0, deepCache = [];
   function collectVideos() {
     const list = Array.from(document.querySelectorAll('video'));
-    return list.length ? list : deepAll(document, 'video'); // Disney+ can hide it in shadow DOM
+    if (list.length) return list;
+    if (video && video.isConnected) return [video];
+    if (now() - lastDeepScan < 3000) return deepCache.filter((v) => v.isConnected);
+    lastDeepScan = now();
+    deepCache = deepAll(document, 'video');
+    return deepCache;
   }
 
   function pickVideo() {
@@ -287,6 +295,29 @@
     return { s: m ? +m[1] : null, e: m ? +m[2] : null, dur: primeDur };
   }
 
+  // Is an ad playing? Each service marks ads in its player; this list covers
+  // the markers known so far (Diagnostics shows "AD" when one is detected).
+  const AD_MARKERS = {
+    prime: '.atvwebplayersdk-ad-timer, .atvwebplayersdk-adtimeindicator-text, [class*="adtimeindicator"], [class*="ad-timer"]',
+    netflix: '[data-uia="ads-info-container"], [data-uia*="ad-break"], [class*="AdsInfo"], [class*="ads-info"]',
+    disney: '[class*="ad-badge"], [class*="adBadge"], [data-testid*="ad-badge"], [class*="ad-countdown"]'
+  };
+  let adDeepAt = 0, adDeepResult = false;
+  function inAd() {
+    const sel = AD_MARKERS[SERVICE];
+    if (!sel || !video) return false;
+    const visible = (el) => !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length) && el.textContent.trim() !== '');
+    try {
+      if (visible(document.querySelector(sel))) return true;
+      // Disney+ keeps its player in shadow DOM: that search is slow, so at most every 3 s.
+      if (SERVICE !== 'disney') return false;
+      if (now() - adDeepAt < 3000) return adDeepResult;
+      adDeepAt = now();
+      adDeepResult = deepAll(document, sel).some(visible);
+      return adDeepResult;
+    } catch { return false; }
+  }
+
   function snapshot() {
     const v = video;
     const mediaId = (SERVICE === 'prime' && primeId()) || M.mediaIdFromUrl(location.href);
@@ -301,7 +332,8 @@
       url: location.href,
       service: SERVICE,
       title: title(mediaId),
-      prime: primeInfo()
+      prime: primeInfo(),
+      inAd: inAd()
     };
   }
 
@@ -459,7 +491,7 @@
   }
 
   function apply(m) {
-    if (!video) return;
+    if (!video || inAd()) return;
     endNudge();
     suppress(1500);
     let target = m.position + (m.state === 'playing' ? (now() - m.sentAt) / 1000 : 0);
@@ -663,9 +695,27 @@
     cap.addEventListener('pointercancel', end, { once: true });
   }
 
+  // While someone types in the call window's chat, the streaming player keeps
+  // grabbing focus for its keyboard shortcuts (every few seconds, when its
+  // controls show or hide). Unless you clicked or typed on the page yourself,
+  // focus goes straight back to the chat.
+  let chatTyping = false, lastUserInputAt = 0;
+  for (const evt of ['pointerdown', 'keydown']) {
+    document.addEventListener(evt, (e) => { if (e.isTrusted) lastUserInputAt = now(); }, true);
+  }
+  document.addEventListener('focusin', () => {
+    if (!chatTyping || !frame || now() - lastUserInputAt < 400) return;
+    // The call window sits inside its own (shadow) root; the page's
+    // document.activeElement never points at it directly.
+    if (frame.getRootNode().activeElement === frame) return;
+    frame.focus();
+    frame.contentWindow.postMessage({ __wpParent: 'refocus' }, '*');
+  }, true);
+
   window.addEventListener('message', (e) => {
     if (!frame || e.source !== frame.contentWindow || !e.data || !e.data.__wpCompanion) return;
     const d = e.data;
+    if (d.__wpCompanion === 'typing') { chatTyping = !!d.on; return; }
     if (d.__wpCompanion === 'size') {
       if (!(d.base > 0)) return;
       frameState = { base: d.base, chatOpen: !!d.chatOpen, minimized: !!d.minimized };

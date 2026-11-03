@@ -1,9 +1,10 @@
 // Peer-to-peer connection to the friend you're calling.
 // Firebase carries only small signaling messages; audio and video go
 // directly PC-to-PC (or via TURN when a direct path is impossible).
-import CONFIG from '../config.js';
+import { loadConfig } from './core.js';
 
 export async function getIceServers() {
+  const CONFIG = await loadConfig();
   const list = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }, ...(CONFIG.iceServers || [])];
   const cf = CONFIG.cloudflareTurn || {};
   if (!cf.keyId || !cf.apiToken) return list;
@@ -24,9 +25,14 @@ export async function getIceServers() {
   return list;
 }
 
-// ctx: { FB, pref(path) → ref inside the pair, me, partnerUid, session, stream, onRemote(stream|null), onState(state) }
+// The webcam is capped so it doesn't take bandwidth from the movie itself.
+const VIDEO_MAX_BITRATE = 500000; // 500 kbps
+const VIDEO_MAX_FPS = 24;
+
+// ctx: { FB, pref(path) → ref inside the pair, me, partnerUid, session, stream,
+//        onRemote(stream|null), onState(state), onData(msg) }
 export function createConnection(ctx) {
-  const { FB, pref, me, partnerUid, session, stream, onRemote, onState } = ctx;
+  const { FB, pref, me, partnerUid, session, stream, onRemote, onState, onData } = ctx;
   const polite = me > partnerUid; // "perfect negotiation": one side yields on collisions
 
   let pc = null;
@@ -40,6 +46,7 @@ export function createConnection(ctx) {
   let discTimer = null;
   let closed = false;
   let state = 'waiting';
+  let channel = null; // direct line to the friend for sync messages (much faster than Firebase)
 
   const setState = (s) => { if (s !== state) { state = s; onState(s); } };
 
@@ -100,6 +107,12 @@ export function createConnection(ctx) {
     setState('connecting');
     stream.getTracks().forEach((t) => p.addTrack(t, stream));
 
+    // Same channel id on both sides ("negotiated"), so nobody has to announce it.
+    const ch = p.createDataChannel('wp-sync', { negotiated: true, id: 7, ordered: true });
+    ch.onopen = () => { channel = ch; onState(state); };
+    ch.onclose = () => { if (channel === ch) channel = null; };
+    ch.onmessage = (e) => { try { onData && onData(JSON.parse(e.data)); } catch {} };
+
     p.ontrack = ({ track, streams }) => {
       onRemote(streams[0] || new MediaStream([track]));
     };
@@ -115,7 +128,7 @@ export function createConnection(ctx) {
     p.onconnectionstatechange = () => {
       const s = p.connectionState;
       clearTimeout(discTimer);
-      if (s === 'connected') setState('connected');
+      if (s === 'connected') { setState('connected'); capVideo(p); }
       else if (s === 'failed') { setState('reconnecting'); p.restartIce(); }
       else if (s === 'disconnected') {
         setState('reconnecting');
@@ -128,7 +141,24 @@ export function createConnection(ctx) {
     early.forEach(queue);
   }
 
+  function capVideo(p) {
+    for (const sender of p.getSenders()) {
+      if (!sender.track || sender.track.kind !== 'video') continue;
+      const prm = sender.getParameters();
+      if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
+      prm.encodings[0].maxBitrate = VIDEO_MAX_BITRATE;
+      prm.encodings[0].maxFramerate = VIDEO_MAX_FPS;
+      sender.setParameters(prm).catch(() => {});
+    }
+  }
+
+  function send(msg) {
+    if (!channel || channel.readyState !== 'open') return false;
+    try { channel.send(JSON.stringify(msg)); return true; } catch { return false; }
+  }
+
   function teardown() {
+    channel = null;
     token++;
     creatingFor = null;
     clearTimeout(discTimer);
@@ -159,5 +189,5 @@ export function createConnection(ctx) {
     return level;
   }
 
-  return { updatePartner, close, audioLevel, get state() { return state; } };
+  return { updatePartner, close, audioLevel, send, get state() { return state; }, get direct() { return !!channel; } };
 }

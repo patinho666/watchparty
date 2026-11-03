@@ -23,6 +23,7 @@ export function createSync(ctx) {
     lastSeekMsgAt: 0, handledCountdown: null, handledOpen: null, bufferingPaused: false,
     recheckUntil: 0, countdownEndsAt: 0, followedHereAt: 0, autoStartSeq: null, banner: null,
     confirmed: null, mismatchSince: 0, primeFallback: null, nudgeUntil: 0,
+    peerPos: null, rtt: null, measuredMs: null, viaDirect: 0, viaFirebase: 0,
     startedAt: ctx.serverNow()
   };
   const unsubs = [];
@@ -69,11 +70,16 @@ export function createSync(ctx) {
       service: f.service ?? l.service ?? null
     };
     S.playback = { ...pb, at: typeof pb.at === 'number' ? pb.at : ctx.serverNow() };
+    // Play/pause/jump go straight to the friend over the call (instant); the
+    // Firebase copy follows a moment later and is the backup.
+    if (explicit && ctx.peerSend) ctx.peerSend({ t: 'pb', pb: S.playback });
     return FB.set(pref('playback'), pb).catch((e) => console.warn('[WatchParty] playback write failed', e));
   }
 
   function applyToLocal(pb, tolerance) {
     if (ctx.local().watchTabId == null) return;
+    const l = rawLoc();
+    if (l && l.inAd) return;
     S.lastApplyAt = Date.now();
     ctx.sendWatch({ cmd: 'apply', state: pb.state, position: expected(pb), sentAt: Date.now(), tolerance });
   }
@@ -137,8 +143,8 @@ export function createSync(ctx) {
   function publishHere() {
     const l = loc();
     // Having the video open doesn't depend on knowing the exact position yet.
-    const v = hasLocalVideo() ? { mediaId: l.mediaId, url: l.url, title: l.title || '', prime: l.prime || null } : null;
-    const key = v ? `${v.mediaId}|${v.prime ? `${v.prime.s}-${v.prime.e}-${v.prime.dur ? 1 : 0}` : ''}` : '';
+    const v = hasLocalVideo() ? { mediaId: l.mediaId, url: l.url, title: l.title || '', prime: l.prime || null, inAd: !!l.inAd } : null;
+    const key = v ? `${v.mediaId}|${v.prime ? `${v.prime.s}-${v.prime.e}-${v.prime.dur ? 1 : 0}` : ''}|${v.inAd ? 'ad' : ''}` : '';
     if (key === S.myHereKey) return;
     S.myHereKey = key;
     S.here[me] = v ? { ...v, at: ctx.serverNow() } : null;
@@ -210,6 +216,9 @@ export function createSync(ctx) {
           writePlayback({ state: 'paused', position: l ? l.position : expected(pb), reason: 'hold', want: 'playing' }, true);
         }
       }
+    } else if (partnerInAd()) {
+      // Ads can't be skipped or synced: wait (paused) until the friend's ad ends.
+      holdLocal();
     } else if (pb && pb.state === 'paused' && pb.want === 'playing' && !countdownRunning() && S.autoStartSeq !== pb.seq) {
       // Both here and someone wanted to play: start together. One side starts it.
       S.autoStartSeq = pb.seq;
@@ -242,7 +251,9 @@ export function createSync(ctx) {
     let text = null;
     if (S.here[me] && !bothHere()) {
       const theirs = S.here[partnerUid];
-      text = theirs ? `Paused until ${name} catches up…` : `Paused until ${name} opens the video`;
+      text = theirs ? `Paused until ${name} catches up…` : `Paused until ${name} opens the video${whereIs() ? ` (now: ${whereIs()})` : ''}`;
+    } else if (S.here[me] && partnerInAd()) {
+      text = `Paused while ${name} watches an ad…`;
     } else if (pb && pb.by !== me && pb.reason === 'buffer' && pb.state === 'paused') {
       text = `Waiting for ${name} to catch up…`;
     }
@@ -250,11 +261,44 @@ export function createSync(ctx) {
   }
 
   const countdownRunning = () => S.countdownEndsAt > Date.now();
+  const partnerInAd = () => !!(bothHere() && S.here[partnerUid] && S.here[partnerUid].inAd);
+
+  // Where the friend is when they don't have the video open ("Disney+ home page").
+  function whereIs() {
+    const p = ctx.partnerStatus();
+    if (!p || !(p.conns && Object.keys(p.conns).length)) return 'offline';
+    if (p.page && p.page.service) return `${M.SERVICE_NAMES[p.page.service] || p.page.service}${p.page.title ? `, ${p.page.title}` : ''}`;
+    return 'not on a streaming site';
+  }
+
+  // "Remind": a chat message (so it arrives as a notification or on-screen message).
+  async function remind() {
+    const l = loc();
+    const what = (l && l.title) || 'the video';
+    await FB.push(pref('messages'), { text: `⏰ I'm waiting for you to open “${what}”`, by: me, name: ctx.myName(), at: FB.serverTimestamp() });
+  }
+
+  function debug() {
+    const pb = S.playback;
+    const h = (u) => { const x = S.here[u]; return x ? `${x.mediaId}${x.inAd ? ' (ad)' : ''}` : 'no video'; };
+    return [
+      `room: ${pb ? `${pb.state} at ${M.fmtTime(pb.position)} by ${pb.by === me ? 'me' : 'friend'} (${pb.reason || '-'})${pb.want ? `, wants ${pb.want}` : ''}` : 'nothing yet'}`,
+      `me: ${h(me)} · friend: ${h(partnerUid)} · together: ${bothHere() ? 'yes' : 'no'}${S.confirmed ? ' · confirmed same' : ''}`,
+      `sync channel: ${ctx.peerDirect && ctx.peerDirect() ? 'direct (over the call)' : 'Firebase only'}${S.rtt != null ? ` · round trip ${S.rtt} ms` : ''}`,
+      `measured difference: ${S.measuredMs != null ? `${S.measuredMs} ms (${S.measuredMs > 0 ? 'friend ahead' : S.measuredMs < 0 ? 'friend behind' : 'exact'})` : 'not available (needs the call connected and the same video)'}`,
+      `friend's actions received: ${S.viaDirect} direct, ${S.viaFirebase} via Firebase`
+    ].join('\n');
+  }
 
   // ── Room listeners ───────────────────────────────────────────
-  function onPlayback(pb) {
+  function onPlayback(pb, direct) {
     const prev = S.playback;
-    S.playback = pb;
+    if (!direct && pb && prev && pb.by !== me && prev.by === pb.by && prev.seq === pb.seq && prev.direct) {
+      S.playback = { ...pb, direct: true };
+      return; // already applied when it arrived over the call
+    }
+    if (pb && pb.by !== me && (!prev || prev.seq !== pb.seq)) { if (direct) S.viaDirect++; else S.viaFirebase++; }
+    S.playback = direct ? { ...pb, direct: true } : pb;
     if (!pb) { enforce(); return; }
     if (pb.by !== me) {
       const l = loc();
@@ -316,8 +360,10 @@ export function createSync(ctx) {
   // ── Events from the watch tab ────────────────────────────────
   function onStatus(st) {
     publishHere();
+    updateBanner();
     const pb = S.playback;
-    if (!bothHere()) { if (!st.paused) holdLocal(); return; }
+    if (!bothHere() || partnerInAd()) { if (!st.paused && !st.inAd) holdLocal(); return; }
+    if (st.inAd) return; // my own ad: nothing to correct until it ends
     const cooldown = Date.now() < S.recheckUntil ? 1500 : 4000;
     if (pb && pb.by !== me && pb.mediaId && same(pb.mediaId, st.mediaId) && !st.buffering && !st.settling &&
         Date.now() - S.lastApplyAt > cooldown && !countdownRunning()) {
@@ -357,7 +403,7 @@ export function createSync(ctx) {
   }
 
   function onLocal(ev) {
-    if (!ev.mediaId) return;
+    if (!ev.mediaId || ev.inAd) return;
     const state = ev.action === 'pause' ? 'paused' : ev.action === 'play' ? 'playing' : (ev.paused ? 'paused' : 'playing');
     if (state === 'playing' && !bothHere()) {
       // Can't play alone: keep it paused and remember the wish to play.
@@ -386,6 +432,49 @@ export function createSync(ctx) {
         writePlayback({ state: 'playing', position: ev.position, reason: 'buffer-end' }, true);
       }
     }
+  }
+
+  // ── Direct messages from the friend (over the call) ───────────
+  function onPeer(m) {
+    if (!m || !m.t) return;
+    if (m.t === 'pb' && m.pb) {
+      const prev = S.playback;
+      if (prev && prev.by === m.pb.by && prev.seq >= m.pb.seq) return; // old news
+      onPlayback(m.pb, true);
+    } else if (m.t === 'pos') {
+      S.peerPos = { ...m, recvAt: Date.now() };
+      measure();
+    } else if (m.t === 'ping') {
+      ctx.peerSend({ t: 'pong', id: m.id });
+    } else if (m.t === 'pong' && S.pingAt && m.id === S.pingId) {
+      S.rtt = Date.now() - S.pingAt;
+    }
+  }
+
+  // Where the friend is right now, from their last direct report.
+  function peerPosition() {
+    const p = S.peerPos;
+    if (!p || Date.now() - p.recvAt > 5000) return null;
+    return p.position + (p.paused ? 0 : Math.max(0, ctx.serverNow() - p.at) / 1000);
+  }
+
+  // The real difference between the two players, in milliseconds (> 0: friend ahead).
+  function measure() {
+    const p = S.peerPos, l = loc();
+    if (!p || !l || !l.mediaId || !same(p.mediaId, l.mediaId) || p.paused !== l.paused) { S.measuredMs = null; return; }
+    const theirs = peerPosition();
+    S.measuredMs = theirs == null ? null : Math.round((theirs - l.position) * 1000);
+  }
+
+  function probe() {
+    if (!ctx.peerDirect || !ctx.peerDirect()) return;
+    const l = loc();
+    if (l && l.mediaId && hasLocalVideo()) {
+      ctx.peerSend({ t: 'pos', mediaId: l.mediaId, position: l.position, paused: l.paused, at: ctx.serverNow() });
+    }
+    S.pingId = Math.random().toString(36).slice(2, 8);
+    S.pingAt = Date.now();
+    ctx.peerSend({ t: 'ping', id: S.pingId });
   }
 
   // The watch tab closed or left the video.
@@ -444,7 +533,7 @@ export function createSync(ctx) {
 
   function writeHistory() {
     const l = loc();
-    if (!l || !l.mediaId || l.settling) return;
+    if (!l || !l.mediaId || l.settling || l.inAd) return;
     const key = M.keyFromMediaId(l.mediaId);
     const entry = {
       mediaId: l.mediaId, title: l.title || 'Untitled', url: l.url, service: l.service,
@@ -461,22 +550,31 @@ export function createSync(ctx) {
     const w = p && p.conns && Object.keys(p.conns).length ? p.watching : null;
     const pb = S.playback;
     const name = ctx.partnerName();
-    let text = '', cls = 'idle', follow = null;
+    let text = '', cls = 'idle', follow = null, waiting = false, partnerTime = null;
     if (!l || !l.mediaId) {
       text = theirs ? `${name} is watching ${theirs.title || 'something'}` : 'Open a show and your friend comes along';
       if (theirs && theirs.url) follow = { title: theirs.title || 'something', url: theirs.url };
     } else if (!theirs) {
-      text = `Paused until ${name} opens the video`; cls = 'warn';
+      text = `${name} hasn't opened the video yet · now: ${whereIs()}`; cls = 'warn'; waiting = true;
+    } else if (partnerInAd()) {
+      text = `${name} is watching an ad, you're paused until it ends`; cls = 'warn';
     } else if (!bothHere()) {
       text = `Bringing you both to the same title…`; cls = 'warn';
     } else if (pb && pb.by !== me && pb.reason === 'buffer' && pb.state === 'paused') {
       text = `Waiting for ${name} to catch up…`; cls = 'warn';
+    } else if (S.measuredMs != null) {
+      // Measured directly over the call: precise.
+      partnerTime = peerPosition();
+      const d = Math.abs(S.measuredMs);
+      if (d < 1000) { text = `In sync · ${d} ms apart`; cls = 'ok'; }
+      else { text = `${(d / 1000).toFixed(1)} s apart, catching up…`; cls = 'warn'; }
     } else if (w && same(w.mediaId, l.mediaId)) {
       const theirPos = (w.position || 0) + (!w.paused ? Math.max(0, ctx.serverNow() - (w.at || 0)) / 1000 : 0);
       const d = Math.abs(theirPos - l.position);
+      partnerTime = theirPos;
       if (d < 2) { text = 'In sync'; cls = 'ok'; } else { text = `About ${Math.round(d)}s apart, syncing…`; cls = 'warn'; }
     } else { text = 'In sync'; cls = 'ok'; }
-    return { text, cls, follow, countdown: countdownRunning(), together: bothHere(), askSame: askSame() };
+    return { text, cls, follow, waiting, partnerTime, countdown: countdownRunning(), together: bothHere(), askSame: askSame() };
   }
 
   function start() {
@@ -497,7 +595,7 @@ export function createSync(ctx) {
     timers.push(setInterval(() => {
       const pb = S.playback, l = loc();
       if (!pb || !l || !hasLocalVideo()) { publishHere(); return; }
-      if (pb.by === me && pb.state === 'playing' && !l.paused && !l.buffering && !l.settling && same(l.mediaId, pb.mediaId) && bothHere()) {
+      if (pb.by === me && pb.state === 'playing' && !l.paused && !l.buffering && !l.settling && !l.inAd && same(l.mediaId, pb.mediaId) && bothHere() && !partnerInAd()) {
         writePlayback({ state: 'playing', position: l.position, reason: 'hb' }, false);
       }
     }, HEARTBEAT_MS));
@@ -508,6 +606,7 @@ export function createSync(ctx) {
     }, 15000));
 
     timers.push(setInterval(checkPrimeFallback, 2000));
+    timers.push(setInterval(probe, 2000));
   }
 
   function stop() {
@@ -521,6 +620,6 @@ export function createSync(ctx) {
 
   return {
     start, stop, onStatus, onReady, onLocal, onBuffering, onLocalGone, reapply,
-    sendReaction, startCountdown, openForBoth, followPartner, resync, confirmSame, info
+    sendReaction, startCountdown, openForBoth, followPartner, resync, confirmSame, remind, debug, info, onPeer
   };
 }

@@ -13,8 +13,8 @@
 
   <div id="setup" class="screen center hidden">
     <h1 class="brand">WatchParty</h1>
-    <p>Add your Firebase project details to <code>config.js</code>, then reload the extension.</p>
-    <p class="muted">The README has the step-by-step setup.</p>
+    <p>This copy of WatchParty has no <code>config.js</code> with the Firebase settings yet.</p>
+    <p class="muted">Put the <code>config.js</code> you received into the WatchParty folder (or copy <code>config.example.js</code> to <code>config.js</code> and fill it in), then restart the browser.</p>
   </div>
 
   <!-- Sign in / create account -->
@@ -36,6 +36,12 @@
       <div class="who"><strong id="me-name"></strong><span id="me-status" class="muted">Online</span></div>
       <button id="settings-btn" class="icon" title="Settings">⚙</button>
     </header>
+
+    <section id="update-banner" class="update hidden">
+      <p id="update-text"></p>
+      <button id="update-btn" class="small primary">Update</button>
+      <p id="update-help" class="hint hidden"></p>
+    </section>
 
     <section id="incoming" class="incoming hidden" aria-live="assertive">
       <span id="incoming-avatar" class="avatar them"></span>
@@ -71,7 +77,14 @@
         <span id="friend-avatar" class="avatar them"></span>
         <div class="who"><strong id="friend-name"></strong><span id="friend-status" class="muted"></span></div>
         <button id="call-btn" class="primary call">Call</button>
+        <details id="friend-menu" class="menu">
+          <summary class="icon" title="More">⋯</summary>
+          <div class="menu-items">
+                </div>
+        </details>
       </div>
+
+      <p id="version-note" class="notice hidden"></p>
 
       <section id="call-card" class="call-card hidden">
         <div id="ringing" class="ringing hidden">
@@ -102,6 +115,8 @@
       <section id="watch-card" class="ticket hidden" aria-live="polite">
         <p id="now-playing" class="now"></p>
         <p id="sync-status" class="sync idle"></p>
+        <p id="partner-time" class="muted small-text hidden"></p>
+        <button id="remind-btn" class="small hidden">⏰ Remind them</button>
         <div id="same-ask" class="same-ask hidden">
           <p><strong>Are you watching the same thing?</strong> <span id="same-text"></span></p>
           <button id="same-btn" class="small primary">Yes, sync us</button>
@@ -149,6 +164,11 @@
       </section>
 
       <section id="tab-history" class="tab">
+        <div id="continue" class="hidden">
+          <p class="section-title">Continue watching</p>
+          <ul id="continue-list" class="list"></ul>
+          <p class="section-title">Everything you watched</p>
+        </div>
         <ul id="history" class="list"></ul>
         <button id="history-clear" class="danger-link hidden">Clear history</button>
       </section>
@@ -169,6 +189,15 @@
     <label class="check"><input type="checkbox" data-setting="ringtone"> Play a ringtone for incoming calls</label>
     <label class="check"><input type="checkbox" data-setting="notifyMessages"> Notify me about new messages</label>
     <button id="perm-btn-2" class="wide">Allow camera and microphone</button>
+    <div class="field">Updates
+      <div class="row"><span id="update-line" class="muted small-text grow"></span><button id="check-update" class="small">Check now</button></div>
+    </div>
+    <details id="diag" class="diag">
+      <summary>Diagnostics</summary>
+      <p class="muted small-text">What WatchParty sees right now. If something misbehaves, copy this and send it along.</p>
+      <pre id="diag-text"></pre>
+      <button id="diag-copy" class="small">Copy diagnostics</button>
+    </details>
     <p id="account-line" class="muted small-text"></p>
     <button id="signout-btn" class="danger-link">Sign out</button>
   </div>

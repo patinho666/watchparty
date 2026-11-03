@@ -93,6 +93,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
       break;
     }
+    case 'window-states': {
+      // Used by the privacy rule: is the call window's browser window minimized?
+      Promise.all((msg.ids || []).map((id) => chrome.windows.get(id).then((w) => [id, w.state]).catch(() => [id, 'gone'])))
+        .then((pairs) => sendResponse(Object.fromEntries(pairs)));
+      return true;
+    }
+    case 'reload-extension':
+      chrome.runtime.reload();
+      break;
     case 'open-url':
       chrome.tabs.create({ url: msg.url });
       break;

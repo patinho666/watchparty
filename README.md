@@ -15,6 +15,31 @@ and a watchlist and history for each pair of friends. Everything runs on free ti
   it remembers where you left it.
 - **Content script** (`content/`): runs on the streaming sites and controls the player.
 
+## Updates
+
+WatchParty checks your GitHub repository for a newer version every few hours. When one is
+there, the sidebar shows **Update**.
+
+**One-time setup on each PC:** in the WatchParty folder, double-click **install.bat**. It allows
+the Update button to run the updater, in Chrome and Edge, for the current Windows user (no
+administrator rights). If Windows shows "Windows protected your PC", click **More info** →
+**Run anyway**. Run it again if you move the folder.
+
+**Updating:** click **Update** in the sidebar. WatchParty downloads the new version, replaces
+its files (your `config.js` is kept) and restarts itself; then refresh any streaming tabs.
+Without install.bat, double-clicking **update.bat** does the same, and WatchParty restarts by
+itself within a minute.
+
+**Publishing a new version (Pedro):**
+1. Raise `"version"` in `manifest.json` (for example 3.0.0 → 3.0.1).
+2. On https://github.com/patinho666/watchparty choose **Add file → Upload files**, drag in
+   the contents of the WatchParty folder **without `config.js`** (your Firebase settings stay
+   private), and click **Commit changes**. The repository must be public.
+3. Within a few hours (or right away with Settings → Updates → **Check now**) everyone sees
+   **Update**.
+
+The repository and branch the updater uses are in `update-source.json`.
+
 ## 1. Firebase setup (once)
 
 If you set up Firebase for version 1, use the same project and redo steps 2 and 4.
@@ -27,7 +52,8 @@ If you set up Firebase for version 1, use the same project and redo steps 2 and 
 3. **Build → Realtime Database → Create database** (locked mode), if you don't have one yet.
 4. In the Realtime Database **Rules** tab, replace everything with the contents of
    `database.rules.json` and click **Publish**.
-5. **Project settings → Your apps → Web app**: copy the `firebaseConfig` values into `config.js`.
+5. **Project settings → Your apps → Web app**: copy `config.example.js` to `config.js` and
+   put the `firebaseConfig` values into it.
    Check that `databaseURL` is filled in.
 
 ## 2. Install on each PC
@@ -64,10 +90,22 @@ If you set up Firebase for version 1, use the same project and redo steps 2 and 
   video, and **⇱** in its top bar opens the side panel.
 - **Out of sync?** **Sync to me** (side panel) or **⟲** (call window) brings your friend to
   exactly where you are, including to the title you're on.
-- **Privacy:** a call only stays on while the side panel or the call window can be seen. If
-  neither is visible (for example the browser is minimized, or you switched away from the
-  video with the panel closed), you get a warning, and after 20 seconds the call ends.
-- **Watchlist and history** belong to each pair of friends. History fills in during calls.
+- **Privacy:** a call only stays on while WatchParty can be seen: the side panel, or the call
+  window on the video. Switching tabs is fine (the red LIVE badge shows the call is still on);
+  if the browser is minimized with nothing of WatchParty visible, you get a warning, and after
+  20 seconds the call ends.
+- **Waiting for your friend:** if they haven't opened the video yet, you see where they are
+  ("Disney+, Home") and a **Remind** button that sends them a message.
+- **Ads** (plans with ads): while one of you watches an ad, the other is held paused, and you
+  continue together when it ends. Ad detection depends on each service's player; Diagnostics
+  shows "AD" when one is detected.
+- **Watchlist and history** belong to each pair of friends. History fills in during calls, and
+  its **Continue watching** section shows the next series you were in the middle of.
+- **Diagnostics** (Settings): what WatchParty sees right now, with a **Copy** button. Send it
+  along when something misbehaves.
+- **Versions:** if your friend runs a different WatchParty version, the friend view says so.
+  Update both to the same version.
+- **Chat** older than 90 days is deleted automatically.
 - **Use headphones**, or your mic picks up the show's sound.
 
 ## Optional: TURN server
@@ -104,10 +142,24 @@ If calls never connect on some network, create a TURN key in the Cloudflare dash
 
 ```
 manifest.json            Extension definition
-config.js                Your Firebase (and optional TURN) settings
+config.js                Your Firebase (and optional TURN) settings (never published)
+config.example.js        Template for config.js
+update-source.json       Where updates come from (GitHub repository and branch)
+install.bat / .ps1       One-time: lets the Update button run the updater
+update.bat               Update by hand
+updater.ps1              Downloads and installs the latest version
+updater-host.bat         Started by the browser when you click Update
+engine/update.js         Checks for new versions; restarts after an update
 database.rules.json      Security rules to paste into Firebase
 background.js            Starts the engine; notifications, badge, tabs, opening the panel
-engine/engine.js         Sign-in, friends, calls, chat, watchlist, history
+engine/engine.js         Starts the engine and wires the modules below
+engine/core.js           Shared state, helpers, event log
+engine/accounts.js       Firebase start-up, username sign-in, presence
+engine/friends.js        Friend requests, conversations, chat clean-up
+engine/calls.js          Calls, camera/mic, voice meter, privacy rule
+engine/tabs.js           Streaming tabs: reports in, commands out
+engine/views.js          Side panel and call window: state and commands
+engine/notify.js         Badge, notifications, ringtone
 engine/call.js           The call connection to your friend
 engine/sync.js           Playback sync during a call
 engine/links.js          Passes the call video to the panel or companion

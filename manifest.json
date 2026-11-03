@@ -1,9 +1,16 @@
 {
   "manifest_version": 3,
   "name": "WatchParty",
-  "version": "2.7.0",
+  "version": "3.0.0",
   "description": "Watch Netflix, Disney+ and Prime Video together with friends: calls, synced playback, chat and reactions.",
-  "permissions": ["sidePanel", "storage", "offscreen", "notifications"],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlu+7JbXab/N6AK00rsEDYpEqS98+c872UY37/jlpjDLuUz0z5m9Vu1ziY0RUicJB2fWFOgKI8G8FtlW+/GOuDXxrsO6KnBIJck2k/9KMRUSH3l0lnMbl8lBhFhfnCXFIbRzf0TRuwREvBBl+n26ehhvz1eXNk1SD4HJprqc7lrn8bcgESclSgD0V3W/lV/5RodPW8GpxA44aHqvi+7XBwNgmiL16Ej6LCV7bzt0Qbr+r915JwYLslH09CCZUiFdEwyLnaZ7BJaVLpkWxrzTgY54uptkYn8uz0pgYwT8IBPNcEzsw6eNGtuoOh//HC72hW+zV9QjfyRkSjasot3PJkQIDAQAB",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "offscreen",
+    "notifications",
+    "nativeMessaging"
+  ],
   "host_permissions": [
     "https://*.netflix.com/*",
     "https://*.disneyplus.com/*",
@@ -13,15 +20,28 @@
     "https://www.amazon.co.uk/*",
     "https://*.firebaseio.com/*",
     "https://*.firebasedatabase.app/*",
-    "https://rtc.live.cloudflare.com/*"
+    "https://rtc.live.cloudflare.com/*",
+    "https://raw.githubusercontent.com/*"
   ],
-  "background": { "service_worker": "background.js" },
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_title": "Open WatchParty",
-    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
-  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
-  "side_panel": { "default_path": "panel/panel.html" },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "side_panel": {
+    "default_path": "panel/panel.html"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -32,19 +52,31 @@
         "https://www.amazon.com.br/gp/video/*",
         "https://www.amazon.co.uk/gp/video/*"
       ],
-      "js": ["shared/media.js", "content/content.js"],
+      "js": [
+        "shared/media.js",
+        "content/content.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.netflix.com/*"],
-      "js": ["content/netflix-main.js"],
+      "matches": [
+        "https://*.netflix.com/*"
+      ],
+      "js": [
+        "content/netflix-main.js"
+      ],
       "world": "MAIN",
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["panel/companion.html", "panel/companion.js", "panel/companion.css", "shared/*"],
+      "resources": [
+        "panel/companion.html",
+        "panel/companion.js",
+        "panel/companion.css",
+        "shared/*"
+      ],
       "matches": [
         "https://*.netflix.com/*",
         "https://*.disneyplus.com/*",

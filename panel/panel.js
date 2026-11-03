@@ -114,6 +114,7 @@ function render() {
   if (S.lastCallEnd) notice(S.lastCallEnd);
 
   renderIncoming();
+  renderUpdate();
   const inFriend = !!(S.call || S.selected);
   $('home').classList.toggle('hidden', inFriend);
   $('friend').classList.toggle('hidden', !inFriend);
@@ -195,7 +196,13 @@ function renderFriend() {
   $('call-btn').classList.toggle('hidden', !!c);
   $('call-btn').disabled = !(f && f.online);
   $('call-btn').title = f && f.online ? `Call ${name}` : `${name} is offline`;
-  $('unfriend-btn').classList.toggle('hidden', !!c);
+  $('friend-menu').classList.toggle('hidden', !!c);
+  // Both sides should run the same version; different ones cause odd bugs.
+  const vn = $('version-note');
+  const theirV = f && f.version;
+  const mismatch = theirV && S.version && theirV !== S.version;
+  vn.classList.toggle('hidden', !mismatch);
+  if (mismatch) vn.textContent = `${name} is on WatchParty ${theirV} and you're on ${S.version}. Update both to the same version to avoid problems.`;
 
   // Call card
   $('call-card').classList.toggle('hidden', !c);
@@ -251,6 +258,10 @@ function renderWatch() {
   const sync = w.sync || {};
   $('sync-status').textContent = hint || sync.text || '';
   $('sync-status').className = `sync ${sync.cls || 'idle'}`;
+  const pt = $('partner-time');
+  pt.classList.toggle('hidden', sync.partnerTime == null);
+  if (sync.partnerTime != null) pt.textContent = `${S.call.partnerName} is at ${M.fmtTime(sync.partnerTime)}`;
+  $('remind-btn').classList.toggle('hidden', !sync.waiting);
   const ask = sync.askSame;
   $('same-ask').classList.toggle('hidden', !ask);
   if (ask) $('same-text').textContent = `You: “${ask.mine}” · ${S.call.partnerName}: “${ask.theirs}”`;
@@ -358,10 +369,41 @@ function renderWatchlist(items, inCall) {
   }
 }
 
+// "Monk – Season 1, Ep. 3" → "Monk"; movies keep their whole title.
+const seriesOf = (title) => String(title || '').split(' – ')[0].trim().toLowerCase();
+
+function renderContinue(items, inCall) {
+  const seen = new Set();
+  const latest = [];
+  for (const it of items) {               // items are newest first
+    const k = seriesOf(it.title);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    const done = it.duration && it.position > it.duration - 120; // finished
+    if (!done && it.title.includes(' – ')) latest.push(it);        // series in progress
+    if (latest.length >= 4) break;
+  }
+  $('continue').classList.toggle('hidden', !latest.length);
+  const ul = $('continue-list');
+  ul.replaceChildren();
+  for (const it of latest) {
+    const li = el('li', 'item');
+    const info = el('div', 'info');
+    info.append(el('div', 'title', it.title), el('div', 'sub', `stopped at ${M.fmtTime(it.position)} · ${fmtDay(it.at)}`));
+    const go = el('button', 'small primary', inCall ? 'Continue together' : 'Continue');
+    go.onclick = () => quiet(act('open', { url: it.url, title: it.title, position: Math.max(0, (it.position || 0) - 5) }, go));
+    const btns = el('div', 'btns');
+    btns.appendChild(go);
+    li.append(info, btns);
+    ul.appendChild(li);
+  }
+}
+
 function renderHistory(items, inCall) {
   const ul = $('history');
   ul.replaceChildren();
   items.sort((a, b) => (b.at || 0) - (a.at || 0));
+  renderContinue(items, inCall);
   $('history-clear').classList.toggle('hidden', !items.length);
   if (!items.length) {
     ul.appendChild(el('li', 'empty', 'What you watch together during calls shows up here, with where you stopped.'));
@@ -392,7 +434,75 @@ function renderHistory(items, inCall) {
 }
 
 // ── Settings ───────────────────────────────────────────────────
+function renderDiagnostics() {
+  const d = S.diagnostics;
+  if (!d) { $('diag-text').textContent = 'Loading…'; return; }
+  $('diag-text').textContent = [
+    `WatchParty ${d.version} · ${d.user} · Firebase connected: ${d.connected}`,
+    `screens: ${d.screens}`,
+    ...d.tabs,
+    `my video: ${d.local}`,
+    `call: ${d.call}`,
+    d.sync,
+    '', 'recent events:', ...d.log
+  ].join('\n');
+}
+
+// ── Updates ─────────────────────────────────────────────────────
+const HOST = 'com.watchparty.updater';
+let updating = false;
+
+function renderUpdate() {
+  const u = S.update;
+  const show = !!((u && u.available) || S.pendingReload);
+  $('update-banner').classList.toggle('hidden', !show);
+  if (!show || updating) return;
+  if (S.pendingReload) {
+    $('update-text').textContent = `WatchParty ${S.pendingReload} is installed and starts as soon as your call ends.`;
+    $('update-btn').classList.add('hidden');
+  } else {
+    $('update-text').textContent = `WatchParty ${u.latest} is available (you have ${S.version}).`;
+    $('update-btn').classList.remove('hidden');
+  }
+}
+
+function runUpdate() {
+  if (S.call && !confirm('Updating restarts WatchParty and ends your call. Update now?')) return;
+  updating = true;
+  const btn = $('update-btn');
+  btn.disabled = true;
+  btn.textContent = 'Updating…';
+  $('update-help').classList.add('hidden');
+  chrome.runtime.sendNativeMessage(HOST, { cmd: 'update' }, (resp) => {
+    const err = chrome.runtime.lastError;
+    updating = false;
+    btn.disabled = false;
+    btn.textContent = 'Update';
+    const help = $('update-help');
+    if (err) {
+      // The updater isn't registered on this PC yet.
+      help.textContent = 'One-time setup needed: in the WatchParty folder, double-click install.bat, then click Update again. (Or double-click update.bat to update right away.)';
+      help.classList.remove('hidden');
+      return;
+    }
+    if (!resp || !resp.ok) {
+      help.textContent = `The update failed: ${(resp && resp.error) || 'unknown error'}. You can also double-click update.bat in the WatchParty folder.`;
+      help.classList.remove('hidden');
+      return;
+    }
+    $('update-text').textContent = `Updated to ${resp.version}. Restarting WatchParty… Then refresh your streaming tabs.`;
+    btn.classList.add('hidden');
+    setTimeout(() => chrome.runtime.reload(), 1200);
+  });
+}
+
 function renderSettings() {
+  if ($('diag').open) renderDiagnostics();
+  const u = S.update;
+  $('update-line').textContent = !u ? `Version ${S.version}`
+    : u.error ? `Version ${S.version} · ${u.error}`
+    : u.available ? `Version ${S.version} · ${u.latest} available`
+    : `Version ${S.version} · up to date`;
   document.querySelectorAll('[data-setting]').forEach((cb) => { cb.checked = !!S.settings[cb.dataset.setting]; });
   $('account-line').textContent = `Signed in as ${S.me.username} · version ${S.version}`;
 }
@@ -410,10 +520,21 @@ $('auth-go').onclick = doAuth;
 $('auth-user').addEventListener('keydown', (e) => { if (e.key === 'Enter') doAuth(); });
 
 $('settings-btn').onclick = () => { screen = 'settings'; render(); };
-$('settings-back').onclick = () => { screen = 'main'; render(); };
+$('settings-back').onclick = () => {
+  screen = 'main';
+  if ($('diag').open) { $('diag').open = false; engine.post({ type: 'diagnostics', on: false }); }
+  render();
+};
 document.querySelectorAll('[data-setting]').forEach((cb) => {
   cb.onchange = () => quiet(act('settings', { patch: { [cb.dataset.setting]: cb.checked } }));
 });
+$('update-btn').onclick = runUpdate;
+$('check-update').onclick = () => quiet(act('check-update', {}, $('check-update')).then(() => flash($('check-update'), 'Checked')));
+$('diag').addEventListener('toggle', () => { engine.post({ type: 'diagnostics', on: $('diag').open }); renderDiagnostics(); });
+$('diag-copy').onclick = async () => {
+  await navigator.clipboard.writeText($('diag-text').textContent).catch(() => {});
+  flash($('diag-copy'), 'Copied');
+};
 $('signout-btn').onclick = () => { if (confirm('Sign out of WatchParty on this browser?')) { screen = 'main'; quiet(act('sign-out')); } };
 
 const openPermission = () => {
@@ -456,6 +577,7 @@ $('unfriend-btn').onclick = () => {
   }
 };
 
+$('remind-btn').onclick = () => quiet(act('remind', {}, $('remind-btn')).then(() => flash($('remind-btn'), 'Reminder sent')));
 $('same-btn').onclick = () => quiet(act('confirm-same', {}, $('same-btn')));
 $('follow-btn').onclick = () => engine.post({ type: 'follow' });
 $('countdown-btn').onclick = () => quiet(act('countdown', {}, $('countdown-btn')));
