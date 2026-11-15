@@ -152,7 +152,10 @@ export function createConnection(ctx) {
     }
   }
 
-  function send(msg) {
+  // Sends a sync message over the direct data channel (not signaling).
+  // Must not be called `send`: that name is the Firebase signaling sender above,
+  // and a second function with the same name silently replaces it.
+  function sendData(msg) {
     if (!channel || channel.readyState !== 'open') return false;
     try { channel.send(JSON.stringify(msg)); return true; } catch { return false; }
   }
@@ -189,5 +192,5 @@ export function createConnection(ctx) {
     return level;
   }
 
-  return { updatePartner, close, audioLevel, send, get state() { return state; }, get direct() { return !!channel; } };
+  return { updatePartner, close, audioLevel, send: sendData, get state() { return state; }, get direct() { return !!channel; } };
 }
